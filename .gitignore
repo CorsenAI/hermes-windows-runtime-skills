@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.zip
+*.bak
+*.tmp
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

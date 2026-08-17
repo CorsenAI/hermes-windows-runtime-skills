@@ -7,7 +7,7 @@ license: MIT
 platforms: [windows, linux]
 metadata:
   hermes:
-    tags: [windows, wsl, python, venv, runtime, troubleshooting]
+    tags: [windows, wsl, git-bash, powershell, python, python-runtime, venv, troubleshooting]
     category: software-development
     requires_tools: [terminal, search_files, read_file]
     related_skills: [windows-wsl-file-navigation, python-debugpy, systematic-debugging]
@@ -22,6 +22,16 @@ modify project dependencies. Its strict selection phase never intentionally
 loads project modules. The bundled global Windows resolver rejects startup path
 overrides before probing; virtual-environment probes apply the route-specific
 checks and trust boundaries documented in the reference.
+
+## Companion Skill
+
+This skill selects and verifies Python. If Windows, Git Bash/MSYS, WSL, or the
+Hermes file tools disagree about how to spell or reach a path, install and
+activate the complementary
+[`windows-wsl-file-navigation`](../windows-wsl-file-navigation/) skill first.
+It resolves the execution domain without treating a successful path as proof
+that the interpreter is project-compatible. Install source:
+`CorsenAI/hermes-windows-runtime-skills/skills/windows-wsl-file-navigation`.
 
 ## When to Use
 
@@ -41,6 +51,10 @@ checks and trust boundaries documented in the reference.
   executing an interpreter.
 - Use `terminal` only after the execution domain and candidate are known.
 - If path routing is uncertain, activate `/windows-wsl-file-navigation` first.
+- Remote and container terminal backends are outside the v0.1.0 scope. If
+  `${HERMES_SKILL_DIR}`, the project root, or the candidate interpreter is not
+  visible from the execution backend, stop before invoking the resolver or an
+  interpreter.
 - Work inside the narrowest user-approved project root.
 - Treat every interpreter execution as a trust boundary. Do not probe a
   candidate from an untrusted repository merely because its layout looks

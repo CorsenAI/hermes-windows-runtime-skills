@@ -1,23 +1,39 @@
-# Hermes Windows Runtime Skills
+# Hermes Agent Windows & WSL Skills: Path Routing and Python Runtime Selection
 
-A consumer-first runtime skill pack for Hermes Agent across Windows, Git
-Bash/MSYS, and WSL, with a non-installing strict selection phase.
+[![Validation](https://github.com/CorsenAI/hermes-windows-runtime-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/CorsenAI/hermes-windows-runtime-skills/actions/workflows/validate.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-The repository contains two focused skills:
-
-- `windows-wsl-file-navigation` routes file reads and searches to the correct
-  path domain.
-- `windows-python-runtime` selects the project interpreter without falling
-  through to an unrelated Python installation or execution alias.
-
-The navigation skill is instruction-only. The Python skill includes an audited
-PowerShell resolver for already-installed official Windows runtimes. It
-authenticates the launcher and runtime before executing an isolated identity
-probe; it never requests Python installation, repair, update, or package
-download. Neither skill requires secrets. Both stop when the evidence is
-insufficient.
+A community-maintained Hermes Agent skill pack for deterministic path routing
+across native Windows, Git Bash/MSYS, and WSL, plus fail-closed selection of an
+already-installed Python interpreter. It helps agents identify execution
+domains and runtime ownership without installing Python, changing dependencies,
+or rewriting project files.
 
 Community-maintained; not affiliated with or endorsed by Nous Research.
+
+## Included Hermes skills
+
+| Skill | Purpose | Install it when |
+|---|---|---|
+| [`windows-wsl-file-navigation`](skills/windows-wsl-file-navigation/) | Routes file operations using the path syntax required by the consuming process. | Windows, Git Bash/MSYS, WSL, or Hermes file tools disagree about a path. |
+| [`windows-python-runtime`](skills/windows-python-runtime/) | Selects and verifies an existing project-compatible Python interpreter. | `python`, `python3`, `py`, a virtual environment, or WSL may select the wrong runtime. |
+
+The skills are separate because path routing and Python runtime trust are
+independent problems. Install either one by itself or both together. Each skill
+links to the other when a task crosses both boundaries.
+
+## Common problems this solves
+
+- Converting a path for the process that actually consumes it, rather than for
+  the shell that launched the process.
+- Distinguishing `C:/project`, `/c/project`, and `/mnt/c/project` without trial
+  and error.
+- Diagnosing `search_files` failures such as `os error 3` without treating a
+  routing error as proof that a file is absent.
+- Preventing `py`, `PATH`, an application alias, or an unrelated environment
+  from silently selecting the wrong Python.
+- Detecting a Windows project that contains a WSL-owned virtual environment,
+  or the reverse.
 
 ## Install
 
@@ -28,7 +44,8 @@ hermes skills install CorsenAI/hermes-windows-runtime-skills/skills/windows-wsl-
 hermes skills install CorsenAI/hermes-windows-runtime-skills/skills/windows-python-runtime
 ```
 
-Or add the repository as a community tap:
+Or add the repository as a Hermes community tap and install either or both
+skills:
 
 ```text
 hermes skills tap add CorsenAI/hermes-windows-runtime-skills
@@ -55,26 +72,42 @@ Python adds another independent boundary. Windows virtual environments use
 `Scripts/python.exe`; POSIX virtual environments use `bin/python`; WSL has its
 own runtimes; and the Windows Python launcher can select a different version
 from the one a project expects. The Python skill classifies ownership before
-executing a trusted candidate, and keeps project imports outside strict
+executing a trusted candidate and keeps project imports outside strict
 selection because startup hooks and module code can have side effects.
 
-## Compatibility
+The navigation skill is instruction-only. The Python skill includes a reviewed,
+test-covered PowerShell resolver for already-installed official Windows
+runtimes. It authenticates the launcher and runtime before executing an
+isolated identity probe; it never requests Python installation, repair, update,
+or package download. Neither skill requires secrets. Both stop when evidence is
+insufficient.
 
-- Hermes Agent running natively on Windows.
-- Hermes Agent running inside WSL on a Windows host.
-- Git Bash/MSYS when present.
-- Current Hermes builds, plus a capability-gated fallback for older or
-  unpatched builds affected by absolute-path conversion failures in
-  `search_files`.
+## Compatibility and scope
 
-The normal route is used when an absolute Windows path works. The fallback is
-used only after reproducing the affected behavior. The underlying issue was
-reported in
+| Environment | v0.1.0 status |
+|---|---|
+| Hermes Agent running natively on Windows with a local terminal backend | Supported and tested |
+| Hermes Agent running inside WSL on a Windows host with a local terminal backend | Supported; live WSL gate available |
+| Git Bash/MSYS on Windows | Supported and tested where present |
+| Plain Linux without a Windows/WSL boundary | Not applicable; use normal Linux paths |
+| Docker, container, SSH, or other remote terminal backends | Outside the validated v0.1.0 scope |
+
+Container and remote backends introduce another filesystem namespace. Stop if
+`${HERMES_SKILL_DIR}`, the project root, or a required executable path is not
+visible to the backend that will execute it. Full Docker host-to-container path
+routing belongs in a dedicated future skill and may also require backend-aware
+mapping in Hermes itself; these two skills do not guess or mask that boundary.
+
+Current Hermes builds are supported, with a capability-gated fallback for
+older or unpatched builds affected by absolute-path conversion failures in
+`search_files`. The normal route is used when an absolute Windows path works.
+The fallback is used only after reproducing the affected behavior. The
+underlying issue was reported in
 [NousResearch/hermes-agent#67629](https://github.com/NousResearch/hermes-agent/issues/67629)
 and fixed upstream by
 [NousResearch/hermes-agent#84378](https://github.com/NousResearch/hermes-agent/pull/84378).
 
-## Safety
+## Safety properties
 
 - Start at the narrowest user-approved root.
 - Treat a missing root, a failed command, and zero matches as different states.
@@ -107,11 +140,11 @@ On a Windows host with a pre-existing test distribution, add explicit
 live WSL and Git-Bash-to-WSL gates. The suite never installs or selects a
 distribution or runtime implicitly.
 
-The suite parses YAML with duplicate-key rejection, checks the real resolver
-and decision contracts, exercises platform-specific path behavior where
-available, and checks publication hygiene. CI uses fixed Windows and Ubuntu
-runner labels plus commit-pinned third-party actions; hosted runner images
-themselves remain mutable.
+The standard GitHub Actions workflow validates Windows and Ubuntu contracts,
+PowerShell 7, Windows PowerShell 5.1, publication hygiene, secrets, workflow
+syntax, and deterministic packaging. Live WSL is an explicit release gate
+because GitHub-hosted Windows runners do not provide the required test
+distribution.
 
 For a release, first run the full suite and secret scan on a clean commit, then
 create the deterministic source archive:
@@ -122,8 +155,8 @@ create the deterministic source archive:
 ```
 
 The packaging gate refuses a dirty tree or an existing output file, builds
-from `HEAD` with `git archive`, rejects private/traversal entries, and verifies
-that archive files exactly match `git ls-files`.
+from `HEAD` with `git archive`, rejects private or traversal entries, and
+verifies that archive files exactly match `git ls-files`.
 
 ## Scope of the public-source review
 

@@ -106,6 +106,8 @@ $readmePath = Join-Path $RepoRoot 'README.md'
 $readme = Get-Content -LiteralPath $readmePath -Raw
 Assert-True ($readme -notmatch '(?i)\baudited\b') 'README must not imply an external audit'
 Assert-True ($readme.IndexOf('Docker, container, SSH, or other remote terminal backends', [StringComparison]::Ordinal) -ge 0) 'README support matrix must disclose remote backend scope'
+$workflow = Get-Content -LiteralPath (Join-Path $RepoRoot '.github/workflows/validate.yml') -Raw
+Assert-True ($workflow.IndexOf('choco install ripgrep --version=14.1.1 --yes --no-progress', [StringComparison]::Ordinal) -ge 0) 'Windows CI must install the pinned ripgrep contract dependency'
 
 $gitRoot = Join-Path $RepoRoot '.git'
 $allItems = @(Get-ChildItem -LiteralPath $RepoRoot -Recurse -Force | Where-Object {

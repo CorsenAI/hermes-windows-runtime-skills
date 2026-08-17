@@ -61,6 +61,11 @@ Then activate a skill in a Hermes session:
 /windows-python-runtime
 ```
 
+The root [`skills.sh.json`](skills.sh.json) groups both entries under
+**Windows and WSL Runtime** when Hermes indexes the tap for Skills Hub. This
+controls presentation only; it does not change installation, trust, or search
+ranking.
+
 ## Why these skills exist
 
 The shell shown to an agent does not determine the path syntax accepted by the
@@ -151,12 +156,28 @@ create the deterministic source archive:
 
 ```text
 & tests/gitleaks.ps1 -RepoRoot $PWD.Path
-& tests/package.ps1 -RepoRoot $PWD.Path -OutputPath ../hermes-windows-runtime-skills-v0.1.0.zip
+& tests/package.ps1 -RepoRoot $PWD.Path -OutputPath ../hermes-windows-runtime-skills-v0.1.0.zip -PythonExe $python
 ```
 
-The packaging gate refuses a dirty tree or an existing output file, builds
-from `HEAD` with `git archive`, rejects private or traversal entries, and
-verifies that archive files exactly match `git ls-files`.
+The packaging gate refuses a dirty tree or an existing output file, reads only
+tracked blobs from `HEAD`, rejects private or traversal entries, and writes a
+canonical uncompressed ZIP with fixed metadata. GitHub Actions builds it
+independently on Windows and Ubuntu; `archive hygiene` succeeds only when both
+SHA-256 values are byte-identical. For a version tag, attach the exact
+`release-source-verified` artifact to the GitHub release without rebuilding it.
+
+## Contributing and security
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing a change. Public bug
+reports and feature requests use the structured GitHub issue forms, and pull
+requests must keep the validation, secret-history, and archive-hygiene gates
+green.
+
+Do not disclose vulnerabilities in a public issue. Follow
+[`SECURITY.md`](SECURITY.md) and use the repository's
+[private vulnerability reporting](https://github.com/CorsenAI/hermes-windows-runtime-skills/security/advisories/new)
+instead. Project interactions are also governed by the
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## Scope of the public-source review
 

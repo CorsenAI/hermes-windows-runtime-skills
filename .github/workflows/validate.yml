@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: '3.13'
+          python-version: '3.13.15'
       - name: Install pinned test parser
         shell: pwsh
         run: |
@@ -69,14 +69,154 @@ jobs:
         shell: pwsh
         run: ./tests/actionlint.ps1 -RepoRoot $PWD.Path
 
-  archive:
-    name: archive hygiene
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+  archive-build:
+    name: archive build (${{ matrix.key }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - key: windows-2025-pwsh
+            os: windows-2025
+            shell: pwsh
+          - key: windows-2025-powershell
+            os: windows-2025
+            shell: powershell
+          - key: ubuntu-24.04-pwsh
+            os: ubuntu-24.04
+            shell: pwsh
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Run the release packaging gate
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13.15'
+      - name: Resolve archive metadata
+        id: archive
         shell: pwsh
-        run: ./tests/package.ps1 -RepoRoot $PWD.Path -OutputPath (Join-Path $env:RUNNER_TEMP 'hermes-windows-runtime-skills-v0.1.0.zip')
+        run: |
+          $skill = Get-Content -LiteralPath 'skills/windows-python-runtime/SKILL.md' -Raw
+          $version = [regex]::Match($skill, '(?m)^version: (?<value>\S+)$').Groups['value'].Value
+          if (-not $version) { throw 'Could not resolve the release version.' }
+          $name = "hermes-windows-runtime-skills-v$version.zip"
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "name=$name`n", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "path=$(Join-Path $env:RUNNER_TEMP $name)`n", [Text.UTF8Encoding]::new($false))
+      - name: Build canonical archive with PowerShell 7
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $python = if ($env:RUNNER_OS -eq 'Windows') {
+            Join-Path $env:pythonLocation 'python.exe'
+          } else {
+            Join-Path $env:pythonLocation 'bin/python'
+          }
+          ./tests/package.ps1 -RepoRoot $PWD.Path -OutputPath '${{ steps.archive.outputs.path }}' -PythonExe $python
+      - name: Build canonical archive with Windows PowerShell 5.1
+        if: matrix.shell == 'powershell'
+        shell: powershell
+        run: |
+          $python = Join-Path $env:pythonLocation 'python.exe'
+          ./tests/package.ps1 -RepoRoot $PWD.Path -OutputPath '${{ steps.archive.outputs.path }}' -PythonExe $python
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-source-${{ matrix.key }}
+          path: ${{ steps.archive.outputs.path }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  archive:
+    name: archive hygiene
+    if: ${{ always() }}
+    needs: archive-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require successful archive producers
+        if: ${{ needs.archive-build.result != 'success' }}
+        shell: pwsh
+        run: throw 'One or more canonical archive producers failed.'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-source-*
+          path: ${{ runner.temp }}/release-sources
+      - name: Require byte-identical archives
+        id: verified
+        shell: pwsh
+        run: |
+          $archives = @(Get-ChildItem -LiteralPath '${{ runner.temp }}/release-sources' -Filter '*.zip' -File -Recurse)
+          if ($archives.Count -ne 3) { throw "Expected three archives, found $($archives.Count)." }
+          $names = @($archives.Name | Sort-Object -Unique)
+          if ($names.Count -ne 1) { throw 'Archive names differ across operating systems.' }
+          $hashes = @($archives | Get-FileHash -Algorithm SHA256)
+          $uniqueHashes = @($hashes.Hash | Sort-Object -Unique)
+          if ($uniqueHashes.Count -ne 1) { throw 'Archive bytes differ across operating systems.' }
+          $verifiedDir = Join-Path $env:RUNNER_TEMP 'verified-release-source'
+          New-Item -ItemType Directory -Path $verifiedDir | Out-Null
+          $verifiedPath = Join-Path $verifiedDir $names[0]
+          Copy-Item -LiteralPath $archives[0].FullName -Destination $verifiedPath
+          "path=$verifiedPath" >> $env:GITHUB_OUTPUT
+          "name=$($names[0])" >> $env:GITHUB_OUTPUT
+          "SHA-256: $($uniqueHashes[0].ToLowerInvariant())" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: release-source-verified
+          path: ${{ steps.verified.outputs.path }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  release:
+    name: publish verified release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [contracts, security, archive]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-source-verified
+          path: ${{ runner.temp }}/verified-release-source
+      - name: Validate tag and verified asset
+        id: release
+        shell: pwsh
+        run: |
+          $skill = Get-Content -LiteralPath 'skills/windows-python-runtime/SKILL.md' -Raw
+          $version = [regex]::Match($skill, '(?m)^version: (?<value>\S+)$').Groups['value'].Value
+          if ($env:GITHUB_REF_NAME -cne "v$version") {
+            throw "Tag $($env:GITHUB_REF_NAME) does not match skill version $version."
+          }
+          $expectedName = "hermes-windows-runtime-skills-v$version.zip"
+          $assets = @(Get-ChildItem -LiteralPath '${{ runner.temp }}/verified-release-source' -Filter '*.zip' -File)
+          if ($assets.Count -ne 1 -or $assets[0].Name -cne $expectedName) {
+            throw 'Verified release asset name or count is invalid.'
+          }
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "path=$($assets[0].FullName)`n", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "name=$expectedName`n", [Text.UTF8Encoding]::new($false))
+      - name: Publish the exact verified asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $assetPath = '${{ steps.release.outputs.path }}'
+          $assetName = '${{ steps.release.outputs.name }}'
+          $existing = & gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $release = $existing | ConvertFrom-Json
+            if (@($release.assets.name) -contains $assetName) {
+              throw "Release asset already exists; refusing to overwrite $assetName."
+            }
+            & gh release upload $tag $assetPath --repo $env:GITHUB_REPOSITORY
+          } else {
+            & gh release create $tag $assetPath --repo $env:GITHUB_REPOSITORY --verify-tag --title $tag --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publication failed.' }

@@ -3,4 +3,7 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.ps1 text eol=crlf
+*.py text eol=lf
+*.sh text eol=lf
+*.txt text eol=lf
 LICENSE text eol=lf

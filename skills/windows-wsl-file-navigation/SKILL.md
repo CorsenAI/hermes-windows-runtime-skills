@@ -26,14 +26,23 @@ not move, delete, or rewrite user files.
   an implausible zero.
 - A task needs searches in both Windows and WSL.
 - An agent is about to claim that a file or directory does not exist.
-- The resolved `rg` executable may be native Windows rather than MSYS/Linux.
+- The underlying search executable may be native Windows rather than
+  MSYS/Linux.
 
 ## Prerequisites
 
 - Use `terminal`, `search_files`, and `read_file`.
+- Confirm where the Hermes file-tool backend runs: native Windows, WSL, plain
+  Linux, or another remote environment. The desktop UI and model server
+  location do not establish that backend.
 - Confirm that the host is Windows or that the current Linux environment is
-  WSL. On plain Linux, use normal Linux paths and stop applying this skill.
+  WSL. On plain Linux, use normal Linux paths and stop applying Windows
+  conversions from this skill.
 - Treat Git Bash and WSL as different execution domains.
+- Treat the shell interpreter itself as a trust boundary. If a Git Bash profile
+  disables or replaces special builtins, injects traps, or otherwise changes
+  command semantics, stop and restart a known exact Bash without profiles;
+  in-shell path defenses cannot authenticate an already-compromised shell.
 
 ## How to Run
 
@@ -45,13 +54,15 @@ not move, delete, or rewrite user files.
 
 ## Quick Reference
 
-| Consumer | Preferred path form | Example |
+| Consumer | Backend/domain | Example |
 |---|---|---|
-| Hermes native file tools | Windows native | `C:/workspace/project` |
-| Native Windows executable | Windows native | `C:/workspace/project` |
+| Hermes file tools via native Windows | Windows | `C:/workspace/project` |
+| Hermes file tools via WSL | WSL | `/mnt/c/workspace/project` |
+| Hermes file tools on WSL-owned files | WSL | `/home/developer/project` |
+| Native Windows executable | Windows | `C:/workspace/project` |
 | Git Bash/MSYS builtin | MSYS | `/c/workspace/project` |
 | Linux executable in WSL | WSL | `/mnt/c/workspace/project` |
-| Windows access to WSL files | WSL UNC | `\\wsl.localhost\<distro>\home\developer` |
+| Windows API reading WSL files | WSL UNC | `\\wsl.localhost\<distro>\home\developer` |
 
 `/c/...` and `/mnt/c/...` are not interchangeable. A Windows executable
 launched by Git Bash should receive `C:/...`; relying on automatic MSYS
@@ -63,14 +74,16 @@ translation is fragile.
 
 Use `terminal` to establish all of the following before converting anything:
 
+- the execution backend used by `search_files` and `read_file`;
 - current shell and working directory;
 - whether `MSYSTEM` or `WSL_DISTRO_NAME` is present;
 - the actual path and binary family of the executable that will consume the
   path;
 - installed WSL distribution names when WSL is required.
 
-Do not infer the tool domain from the model server. A model served from WSL can
-still control native Windows tools.
+Do not infer the tool domain from the GUI, shell appearance, or model server. A
+model served from WSL can control native Windows tools, while a native Windows
+desktop can connect to a Hermes backend running inside WSL.
 
 ### 2. Classify the path
 
@@ -88,8 +101,8 @@ distribution. Do not convert paths with ad-hoc string replacement.
 
 ### 3. Validate the root
 
-Check the root in the same environment that will run the search. Record one of
-four states:
+Check the root through the same Hermes backend or executable that will consume
+the final path. Record one of four states:
 
 1. root exists;
 2. root is missing;
@@ -100,19 +113,28 @@ States 2-4 do not prove that the requested file is absent.
 
 ### 4. Choose the least-layered route
 
-- For Windows files, call `search_files` with `C:/...` first and use
-  `read_file` with the exact returned path.
+- First identify the backend used by `search_files` and `read_file`. For a
+  Windows-drive file, use `C:/...` only with a native Windows backend and
+  `/mnt/c/...` with a WSL backend. Use `/home/...` for WSL-owned files.
+- On a native Windows backend, try the normal absolute `C:/...` route once.
+  Enter legacy recovery only if that capability probe reproduces the known
+  conversion failure; never select it from a version guess alone.
 - For WSL files, use `terminal` to invoke the chosen distribution directly.
   Prefer a direct executable call; add a login shell only when the command
   genuinely depends on login initialization.
 - When Git Bash launches `wsl.exe`, scope the MSYS conversion exclusion to that
   single call. Never export it for the session.
-- Keep user-supplied patterns in the structured `search_files` tool. Do not
-  interpolate untrusted search text into a terminal command across shell
-  boundaries.
-- For a known file, prefer `read_file` through a WSL UNC path over a nested
-  shell command when the file actually belongs to the WSL filesystem and the
-  native tool supports the UNC path.
+- Keep user-supplied patterns in the structured `search_files` tool, but first
+  account for wrappers that do not place an option terminator before the
+  pattern. Never send a regex beginning with `-` verbatim. Wrap the complete
+  valid regex in a noncapturing group, such as `(?:- Use)`; for literal text,
+  regex-escape it before wrapping. If semantics cannot be preserved, stop
+  instead of moving untrusted text into `terminal`.
+- Normalize a relative root beginning with `-` to `./<name>` or to an absolute
+  path in the consumer's domain before searching it.
+- For a known WSL-owned file consumed by a native Windows backend, prefer
+  `read_file` through a WSL UNC path over a nested shell command when the
+  backend supports that UNC path.
 - For a Windows file already mounted at `/mnt/<drive>` in WSL, return to its
   direct `C:/...` form for Windows tools. Do not round-trip through a WSL UNC
   path such as `\\wsl.localhost\<distro>\mnt\c\...`.
@@ -157,10 +179,28 @@ as `C:/...` and `/mnt/c/...`.
 10. **Terminal interpolation.** Apostrophes, newlines, `$()`, `!`, spaces, and
     Unicode can change meaning across parsers. Use structured tool arguments
     for untrusted patterns instead of constructing a shell command.
+11. **GUI equals backend.** A native desktop can manage a WSL backend. Route
+    for the process receiving the path, not the visible application.
+12. **First distribution wins.** Multiple WSL distributions may expose the
+    same mounted Windows file but have different Linux files and runtimes.
+    Require project evidence or an explicit choice before selecting one.
+13. **Line ending looks like a path failure.** A visible `^M` or a bad
+    interpreter error can come from CRLF in a POSIX script. Diagnose encoding
+    separately; do not rewrite line endings without authorization.
+14. **Nested expansion survives intact.** PowerShell and Git Bash can consume
+    `$`, `$()`, `!`, or backslashes before WSL sees them. Prefer direct
+    executable arguments and verify the received value instead of trusting a
+    successful exit code.
+15. **Structured means option-safe.** Some Hermes builds quote search values
+    but omit the search program's `-e`/`--` separators. A leading-dash pattern
+    can therefore become an option. Use the noncapturing-group route above and
+    independently verify the result.
 
 ## Verification
 
 - The consuming executable and its domain were identified.
+- The Hermes file-tool backend was identified separately from the GUI and
+  model server.
 - The root was validated in that domain.
 - Any MSYS conversion exclusion was local to one command.
 - Windows and WSL results are reported separately.

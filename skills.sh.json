@@ -1,0 +1,14 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Windows and WSL Runtime",
+      "description": "Deterministic path routing and non-installing Python runtime selection for Hermes Agent on Windows, Git Bash/MSYS, and WSL.",
+      "skills": [
+        "windows-wsl-file-navigation",
+        "windows-python-runtime"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+name: Feature request
+description: Propose a focused improvement to the skills or their validation.
+title: "[Enhancement]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep proposals within the repository's supported Windows, Git Bash/MSYS, and WSL boundaries.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Target component
+      options:
+        - windows-wsl-file-navigation
+        - windows-python-runtime
+        - Validation or packaging
+        - Installation or tap metadata
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the concrete limitation or failure mode.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Explain the desired behavior without prescribing unnecessary implementation details.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include current workarounds and why they are insufficient.
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation approach
+      description: Describe the environments and regression tests that would prove the change.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and pull requests.
+          required: true
+        - label: The proposal does not require silent installation or destructive repair.
+          required: true
+        - label: I have identified any Docker or remote-backend assumptions.
+          required: true

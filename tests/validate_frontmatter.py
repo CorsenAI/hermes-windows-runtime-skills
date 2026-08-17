@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -38,6 +39,7 @@ SEMVER = re.compile(
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 EXPECTED_PLATFORMS = {"windows", "linux"}
 EXPECTED_TOOLS = {"terminal", "search_files", "read_file"}
+ISSUE_FORM_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def is_semver(value: object) -> bool:
@@ -113,6 +115,109 @@ def validate_skill(path: Path) -> None:
         raise ValueError("metadata.hermes.category mismatch")
 
 
+def load_unique_yaml(path: Path) -> dict[str, Any]:
+    data = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
+    if not isinstance(data, dict):
+        raise ValueError("document must be a YAML mapping")
+    return data
+
+
+def validate_issue_form(path: Path) -> None:
+    data = load_unique_yaml(path)
+    for key in ("name", "description", "body"):
+        if key not in data:
+            raise ValueError(f"missing required key: {key}")
+    if not all(
+        isinstance(data[key], str) and data[key].strip()
+        for key in ("name", "description")
+    ):
+        raise ValueError("name and description must be non-empty strings")
+    if "title" in data and not isinstance(data["title"], str):
+        raise ValueError("title must be a string when present")
+    body = data["body"]
+    if not isinstance(body, list) or not body:
+        raise ValueError("body must be a non-empty list")
+    ids: set[str] = set()
+    for item in body:
+        if not isinstance(item, dict):
+            raise ValueError("body item must be a mapping")
+        item_type = item.get("type")
+        if not isinstance(item_type, str) or not item_type:
+            raise ValueError("body item type must be a non-empty string")
+        item_id = item.get("id")
+        if item_id is not None:
+            if not isinstance(item_id, str) or not ISSUE_FORM_ID.fullmatch(item_id):
+                raise ValueError(f"invalid body item id: {item_id!r}")
+            if item_id in ids:
+                raise ValueError(f"duplicate body item id: {item_id!r}")
+            ids.add(item_id)
+        elif item_type != "markdown":
+            raise ValueError("non-Markdown body item must have an id")
+        if not isinstance(item.get("attributes"), dict):
+            raise ValueError("body item attributes must be a mapping")
+
+
+def validate_issue_config(path: Path) -> None:
+    data = load_unique_yaml(path)
+    if set(data) != {"blank_issues_enabled", "contact_links"}:
+        raise ValueError("config must contain blank_issues_enabled and contact_links")
+    if not isinstance(data["blank_issues_enabled"], bool):
+        raise ValueError("blank_issues_enabled must be boolean")
+    links = data["contact_links"]
+    if not isinstance(links, list) or not links:
+        raise ValueError("contact_links must be a non-empty list")
+    expected_urls = [
+        "https://github.com/CorsenAI/hermes-windows-runtime-skills/security/policy",
+        "https://github.com/NousResearch/hermes-agent/issues",
+    ]
+    for link in links:
+        if not isinstance(link, dict) or set(link) != {"name", "url", "about"}:
+            raise ValueError("contact link must contain name, url, and about")
+    if [link["url"] for link in links] != expected_urls:
+        raise ValueError("contact links must use the expected repository destinations")
+
+
+def construct_unique_json(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    mapping: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in mapping:
+            raise ValueError(f"duplicate JSON key: {key!r}")
+        mapping[key] = value
+    return mapping
+
+
+def validate_skills_sh(path: Path) -> None:
+    data = json.loads(
+        path.read_text(encoding="utf-8"), object_pairs_hook=construct_unique_json
+    )
+    if not isinstance(data, dict):
+        raise ValueError("document must be a JSON object")
+    if set(data) != {"$schema", "notGrouped", "groupings"}:
+        raise ValueError("unexpected root property")
+    if data["$schema"] != "https://skills.sh/schemas/skills.sh.schema.json":
+        raise ValueError("unexpected skills.sh schema URL")
+    if data["notGrouped"] not in {"top", "bottom"}:
+        raise ValueError("notGrouped must be top or bottom")
+    groups = data["groupings"]
+    if not isinstance(groups, list) or len(groups) != 1:
+        raise ValueError("expected one category grouping")
+    group = groups[0]
+    if not isinstance(group, dict) or set(group) != {"title", "description", "skills"}:
+        raise ValueError("grouping must contain title, description, and skills")
+    if not all(
+        isinstance(group[key], str) and group[key].strip()
+        for key in ("title", "description")
+    ):
+        raise ValueError("grouping title and description must be non-empty strings")
+    if len(group["title"]) > 120 or len(group["description"]) > 500:
+        raise ValueError("grouping title or description exceeds the published schema")
+    expected = ["windows-wsl-file-navigation", "windows-python-runtime"]
+    if group["skills"] != expected:
+        raise ValueError(f"grouping skills must equal {expected!r}")
+    if any(len(skill) > 120 for skill in group["skills"]):
+        raise ValueError("grouping skill name exceeds the published schema")
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: validate_frontmatter.py <repository-root>", file=sys.stderr)
@@ -124,6 +229,13 @@ def main() -> int:
         pass
     else:
         print("duplicate-key rejection self-test failed", file=sys.stderr)
+        return 1
+    try:
+        json.loads('{"name":"first","name":"second"}', object_pairs_hook=construct_unique_json)
+    except ValueError:
+        pass
+    else:
+        print("duplicate JSON key rejection self-test failed", file=sys.stderr)
         return 1
     if is_semver("1.0.0-01") or not is_semver("1.0.0-1"):
         print("SemVer prerelease self-test failed", file=sys.stderr)
@@ -144,6 +256,31 @@ def main() -> int:
         except Exception as exc:
             print(f"FAIL: {path.relative_to(root).as_posix()}: {exc}", file=sys.stderr)
             return 1
+    issue_forms = [
+        root / ".github/ISSUE_TEMPLATE/bug_report.yml",
+        root / ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ]
+    for path in issue_forms:
+        try:
+            validate_issue_form(path)
+            print(f"PASS: {path.relative_to(root).as_posix()}")
+        except Exception as exc:
+            print(f"FAIL: {path.relative_to(root).as_posix()}: {exc}", file=sys.stderr)
+            return 1
+    config_path = root / ".github/ISSUE_TEMPLATE/config.yml"
+    try:
+        validate_issue_config(config_path)
+        print(f"PASS: {config_path.relative_to(root).as_posix()}")
+    except Exception as exc:
+        print(f"FAIL: {config_path.relative_to(root).as_posix()}: {exc}", file=sys.stderr)
+        return 1
+    skills_sh_path = root / "skills.sh.json"
+    try:
+        validate_skills_sh(skills_sh_path)
+        print(f"PASS: {skills_sh_path.relative_to(root).as_posix()}")
+    except Exception as exc:
+        print(f"FAIL: {skills_sh_path.relative_to(root).as_posix()}: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 

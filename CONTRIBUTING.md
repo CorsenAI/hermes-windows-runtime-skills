@@ -27,6 +27,8 @@ $powerShell = [IO.Path]::Combine(
 )
 & $powerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass `
     -File tests/run.ps1 -PythonExe $python
+& tests/gitleaks.ps1 -RepoRoot $PWD.Path
+& tests/actionlint.ps1 -RepoRoot $PWD.Path
 ```
 
 On a Windows host with a pre-existing WSL test distribution, pass the explicit
@@ -60,7 +62,8 @@ Create a focused branch such as `fix/<topic>`, `docs/<topic>`, or
 - documentation updates when user-visible behavior changes.
 
 Keep unrelated refactoring out of the same pull request. Release versions are
-changed only as part of an explicit release.
+changed only as part of an explicit release. Release assets must come from the
+tag workflow's `release-source-verified` artifact; do not rebuild them locally.
 
 ## Commit messages
 

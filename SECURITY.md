@@ -28,19 +28,17 @@ Remove credentials, tokens, personal data, and unrelated machine details from
 logs and attachments. Do not test against systems or data that you do not own
 or have explicit permission to assess.
 
-The maintainers aim to acknowledge a complete report within three business
-days and provide an initial assessment within seven business days. Resolution
-timing depends on severity, reproducibility, and upstream dependencies.
+Maintainers will acknowledge a complete report as soon as practical, validate
+its impact, and keep the reporter informed when there is material progress.
+Response and remediation times depend on severity, reproducibility, maintainer
+availability, and upstream dependencies; no service level is guaranteed.
 
 ## Disclosure process
 
-Reports are handled under coordinated disclosure. The default disclosure
-window is 90 days from acknowledgement, unless the reporter and maintainers
-agree on another date. Earlier disclosure may be appropriate after a fix is
-available or when active exploitation creates a material public risk.
-
-Credit is offered in the release notes when requested and when disclosure does
-not expose sensitive information.
+Reports are handled under coordinated disclosure. Reporter and maintainers
+should agree on disclosure timing after impact and remediation options are
+understood. Maintainers may credit reporters who request attribution when that
+does not expose sensitive information.
 
 ## Scope
 

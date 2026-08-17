@@ -7,7 +7,7 @@ license: MIT
 platforms: [windows, linux]
 metadata:
   hermes:
-    tags: [windows, wsl, git-bash, msys, paths, files]
+    tags: [windows, wsl, git-bash, msys, path-routing, path-conversion]
     category: software-development
     requires_tools: [terminal, search_files, read_file]
     related_skills: [windows-python-runtime, codebase-inspection, systematic-debugging]
@@ -18,6 +18,15 @@ metadata:
 Route file operations according to the program that consumes the path, not
 merely the shell that launches it. This skill diagnoses and searches; it does
 not move, delete, or rewrite user files.
+
+## Companion Skill
+
+This skill solves path and execution-domain routing. If the task also needs to
+choose or verify a Python interpreter, install and activate the complementary
+[`windows-python-runtime`](../windows-python-runtime/) skill. It treats Python
+ownership and trust as a separate decision instead of assuming that a valid
+path identifies the correct runtime. Install source:
+`CorsenAI/hermes-windows-runtime-skills/skills/windows-python-runtime`.
 
 ## When to Use
 
@@ -39,6 +48,10 @@ not move, delete, or rewrite user files.
   WSL. On plain Linux, use normal Linux paths and stop applying Windows
   conversions from this skill.
 - Treat Git Bash and WSL as different execution domains.
+- Remote and container terminal backends are outside the v0.1.0 scope. If
+  `${HERMES_SKILL_DIR}`, the intended root, or the required path is not visible
+  from the execution backend, stop instead of guessing a host-to-backend
+  mapping.
 - Treat the shell interpreter itself as a trust boundary. If a Git Bash profile
   disables or replaces special builtins, injects traps, or otherwise changes
   command semantics, stop and restart a known exact Bash without profiles;

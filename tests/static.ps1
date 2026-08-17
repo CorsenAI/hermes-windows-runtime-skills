@@ -42,6 +42,7 @@ foreach ($skillPath in $skillPaths) {
         if ($index -ge 0) { $last = $index }
     }
     Assert-True ($content -notmatch '(?i)\b(?:TODO|FIXME|TBD)\b') "${slug}: unfinished marker"
+    Assert-True ($content.IndexOf('Remote and container terminal backends are outside the v0.1.0 scope', [StringComparison]::Ordinal) -ge 0) "${slug}: backend visibility guard missing"
 }
 
 $pathSkill = Get-Content -LiteralPath $skillPaths[0] -Raw
@@ -98,6 +99,13 @@ foreach ($line in ($pythonBundle.Replace("`r`n", "`n") -split "`n")) {
 }
 Assert-True ($pythonReference -notmatch '(?m)^\s*&\s*\$launcherPath\s+(?!-0p\b)') 'Resolved launcher may only execute the -0p inventory operation'
 Assert-True ($pythonResolver -notmatch '(?m)^\s*[^#\r\n]*&\s*\$LauncherPath\s+(?!-0p\b)') 'Resolver launcher may only execute the -0p inventory operation'
+
+Assert-True ($pathSkill.IndexOf('[`windows-python-runtime`](../windows-python-runtime/)', [StringComparison]::Ordinal) -ge 0) 'Path skill must link to its Python companion'
+Assert-True ($pythonSkill.IndexOf('[`windows-wsl-file-navigation`](../windows-wsl-file-navigation/)', [StringComparison]::Ordinal) -ge 0) 'Python skill must link to its path-routing companion'
+$readmePath = Join-Path $RepoRoot 'README.md'
+$readme = Get-Content -LiteralPath $readmePath -Raw
+Assert-True ($readme -notmatch '(?i)\baudited\b') 'README must not imply an external audit'
+Assert-True ($readme.IndexOf('Docker, container, SSH, or other remote terminal backends', [StringComparison]::Ordinal) -ge 0) 'README support matrix must disclose remote backend scope'
 
 $gitRoot = Join-Path $RepoRoot '.git'
 $allItems = @(Get-ChildItem -LiteralPath $RepoRoot -Recurse -Force | Where-Object {

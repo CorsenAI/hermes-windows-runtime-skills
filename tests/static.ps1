@@ -109,12 +109,46 @@ Assert-True ($readme.IndexOf('Docker, container, SSH, or other remote terminal b
 $workflow = Get-Content -LiteralPath (Join-Path $RepoRoot '.github/workflows/validate.yml') -Raw
 Assert-True ($workflow.IndexOf('choco install ripgrep --version=14.1.0 --yes --no-progress', [StringComparison]::Ordinal) -ge 0) 'Windows CI must install the pinned ripgrep contract dependency'
 
+$communityFiles = @(
+    'SECURITY.md',
+    'CONTRIBUTING.md',
+    'CODE_OF_CONDUCT.md',
+    '.github/ISSUE_TEMPLATE/bug_report.yml',
+    '.github/ISSUE_TEMPLATE/feature_request.yml',
+    '.github/ISSUE_TEMPLATE/config.yml',
+    '.github/PULL_REQUEST_TEMPLATE.md',
+    'skills.sh.json'
+)
+foreach ($relativePath in $communityFiles) {
+    Assert-True (Test-Path -LiteralPath (Join-Path $RepoRoot $relativePath) -PathType Leaf) "Missing community file: $relativePath"
+}
+
+$skillsIndexPath = Join-Path $RepoRoot 'skills.sh.json'
+if (Test-Path -LiteralPath $skillsIndexPath -PathType Leaf) {
+    try {
+        $skillsIndex = Get-Content -LiteralPath $skillsIndexPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        Assert-True ($skillsIndex.'$schema' -eq 'https://skills.sh/schemas/skills.sh.schema.json') 'skills.sh.json schema URL is invalid'
+        $groupings = @($skillsIndex.groupings)
+        Assert-True ($groupings.Count -eq 1) 'skills.sh.json must contain one focused grouping'
+        if ($groupings.Count -eq 1) {
+            $groupedSkills = @($groupings[0].skills)
+            Assert-True ($groupedSkills.Count -eq 2) 'skills.sh.json must list both skills exactly once'
+            Assert-True ($groupedSkills -contains 'windows-wsl-file-navigation') 'Path skill missing from skills.sh.json'
+            Assert-True ($groupedSkills -contains 'windows-python-runtime') 'Python skill missing from skills.sh.json'
+            Assert-True ((@($groupedSkills | Select-Object -Unique)).Count -eq $groupedSkills.Count) 'Duplicate skill in skills.sh.json'
+        }
+    }
+    catch {
+        $failures.Add("Invalid skills.sh.json: $($_.Exception.Message)")
+    }
+}
+
 $gitRoot = Join-Path $RepoRoot '.git'
 $allItems = @(Get-ChildItem -LiteralPath $RepoRoot -Recurse -Force | Where-Object {
     $_.FullName -ne $gitRoot -and -not $_.FullName.StartsWith($gitRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
 })
 $files = @($allItems | Where-Object { -not $_.PSIsContainer })
-$allowedExtensions = @('.md', '.ps1', '.py', '.sh', '.txt', '.yml', '.yaml')
+$allowedExtensions = @('.md', '.ps1', '.py', '.sh', '.txt', '.yml', '.yaml', '.json')
 $allowedNames = @('LICENSE', '.gitignore', '.gitattributes', '.editorconfig')
 
 foreach ($item in $allItems) {

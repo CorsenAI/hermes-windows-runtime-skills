@@ -1,0 +1,101 @@
+name: Bug report
+description: Report reproducible incorrect behavior in a skill, script, or test.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not disclose vulnerabilities here. Follow SECURITY.md for private reporting.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - windows-wsl-file-navigation
+        - windows-python-runtime
+        - Validation or packaging
+        - Installation or tap metadata
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Release or commit
+      description: Provide a tag or full commit SHA.
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Execution backend
+      options:
+        - Native Windows
+        - WSL
+        - Git Bash or MSYS
+        - Plain Linux
+        - Docker or remote backend
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Windows version, WSL distribution, shell, Hermes version, and Python series when relevant.
+      placeholder: Windows 11; Ubuntu 24.04 WSL2; PowerShell 7.5; Hermes ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Explain the observed behavior and why it appears incorrect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that demonstrates the problem.
+      placeholder: |
+        1. Activate ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized output
+      description: Paste relevant logs or command output after removing secrets and personal paths.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and pull requests.
+          required: true
+        - label: I removed secrets, tokens, personal data, and unrelated machine details.
+          required: true
+        - label: This report is not a vulnerability disclosure.
+          required: true
